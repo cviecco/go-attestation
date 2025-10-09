@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -66,6 +67,7 @@ func (t *wrappedTPM20) rsaEkTemplate() tpm2.Public {
 }
 
 func (t *wrappedTPM20) eccEkTemplate() tpm2.Public {
+	log.Printf("wrappedTPM eccEKTemplate top")
 	if t.tpmECCEkTemplate != nil {
 		return *t.tpmECCEkTemplate
 	}
@@ -113,6 +115,7 @@ func (t *wrappedTPM20) getEndorsementKeyHandle(ek *EK) (tpmutil.Handle, bool, er
 
 	if ek == nil {
 		// The default is RSA for backward compatibility.
+		log.Printf("wrappedTpM getEndorsementKeyHandle ek is nil")
 		ekHandle = commonRSAEkEquivalentHandle
 		ekTemplate = t.rsaEkTemplate()
 	} else {
@@ -185,13 +188,71 @@ func (t *wrappedTPM20) getStorageRootKeyHandle(parent ParentKeyConfig) (tpmutil.
 	return srkHandle, true, nil
 }
 
+func (t *wrappedTPM20) getKeyHandleKeyMap() (map[crypto.PublicKey]tpmutil.Handle, error) {
+	rvalue := make(map[crypto.PublicKey]tpmutil.Handle)
+	// NOTE: this list should be replaced by a call to an
+	// equivalent of:  "tpm2_getcap handles-persistent"
+	keyHandlesToSearch := []tpmutil.Handle{
+		commonRSAEkEquivalentHandle,
+		commonECCEkEquivalentHandle,
+		commonECCEkEquivalentHandle + 1,
+		commonECCEkEquivalentHandle + 2,
+	}
+	for _, keyHandle := range keyHandlesToSearch {
+		pub, _, _, err := tpm2.ReadPublic(t.rwc, keyHandle)
+		if err != nil {
+			continue
+		}
+		if pub.RSAParameters != nil || pub.ECCParameters != nil {
+			key, err := pub.Key()
+			if err != nil {
+				return nil, err
+			}
+			rvalue[key] = keyHandle
+		}
+	}
+	return rvalue, nil
+}
+
 func (t *wrappedTPM20) ekCertificates() ([]EK, error) {
 	var res []EK
-	if rsaCert, err := readEKCertFromNVRAM20(t.rwc, nvramRSACertIndex); err == nil {
-		res = append(res, EK{Public: crypto.PublicKey(rsaCert.PublicKey), Certificate: rsaCert, handle: commonRSAEkEquivalentHandle})
+	certIndexes := []int{nvramRSACertIndex, nvramECCCertIndex, nvram3KRSACertIndex, nvramP384CertIndex}
+
+	keyHandleMap, err := t.getKeyHandleKeyMap()
+	if err != nil {
+		return nil, err
 	}
-	if eccCert, err := readEKCertFromNVRAM20(t.rwc, nvramECCCertIndex); err == nil {
-		res = append(res, EK{Public: crypto.PublicKey(eccCert.PublicKey), Certificate: eccCert, handle: commonECCEkEquivalentHandle})
+	for _, certIndex := range certIndexes {
+		if cert, err := readEKCertFromNVRAM20(t.rwc, tpmutil.Handle(certIndex)); err == nil {
+			var handleToUse tpmutil.Handle
+			keyfound := false
+		FindKeyHandleLoop:
+			//This section finds the keyhandle
+			for key, keyHandle := range keyHandleMap {
+				switch k := key.(type) {
+				case *rsa.PublicKey:
+					if k.Equal(cert.PublicKey) {
+						handleToUse = keyHandle
+						keyfound = true
+						break FindKeyHandleLoop
+					}
+				case *ecdsa.PublicKey:
+					if k.Equal(cert.PublicKey) {
+						handleToUse = keyHandle
+						keyfound = true
+						break FindKeyHandleLoop
+					}
+				default:
+					log.Printf("Type not recognized  %T!\n", k)
+				}
+			}
+			if !keyfound {
+				log.Printf("key for cert[%x] not found", certIndex)
+				continue
+			}
+
+			res = append(res, EK{Public: crypto.PublicKey(cert.PublicKey), Certificate: cert, handle: handleToUse})
+		}
 	}
 	return res, nil
 }
@@ -633,7 +694,8 @@ func (k *wrappedKey20) activateCredential(tb tpmBase, in EncryptedCredential, ek
 		nil,              /*secret*/
 		tpm2.SessionPolicy,
 		tpm2.AlgNull,
-		tpm2.AlgSHA256)
+		tpm2.AlgSHA256,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("creating session: %v", err)
 	}

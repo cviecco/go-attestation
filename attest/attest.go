@@ -94,6 +94,11 @@ var defaultParentConfig = ParentKeyConfig{
 	Handle:    0x81000001,
 }
 
+var EccParentConfig = ParentKeyConfig{
+	Algorithm: ECDSA,
+	Handle:    0x81000002,
+}
+
 type ak interface {
 	close(tpmBase) error
 	marshal() ([]byte, error)
