@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -252,6 +253,7 @@ func (t *wrappedTPM20) newAK(opts *AKConfig) (*AK, error) {
 	var sigScheme *tpm2.SigScheme
 	// The default is RSA.
 	if opts != nil && opts.Algorithm == ECDSA {
+		log.Printf("newAK using ECDSA")
 		akTemplate = akTemplateECC
 		sigScheme = akTemplateECC.ECCParameters.Sign
 	} else {
@@ -606,6 +608,7 @@ func (k *wrappedKey20) close(t tpmBase) error {
 }
 
 func (k *wrappedKey20) activateCredential(tb tpmBase, in EncryptedCredential, ek *EK) ([]byte, error) {
+	log.Printf("top of wrappedKey activateCredential")
 	t, ok := tb.(*wrappedTPM20)
 	if !ok {
 		return nil, fmt.Errorf("expected *wrappedTPM20, got %T", tb)
@@ -619,11 +622,13 @@ func (k *wrappedKey20) activateCredential(tb tpmBase, in EncryptedCredential, ek
 		return nil, fmt.Errorf("malformed encrypted secret")
 	}
 	secret := in.Secret[2:]
+	log.Printf(" wrappedKey after getting secret")
 
 	ekHnd, _, err := t.getEndorsementKeyHandle(ek)
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("actcateCredentials after getendorsementkeyhandle")
 
 	sessHandle, _, err := tpm2.StartAuthSession(
 		t.rwc,
@@ -633,15 +638,19 @@ func (k *wrappedKey20) activateCredential(tb tpmBase, in EncryptedCredential, ek
 		nil,              /*secret*/
 		tpm2.SessionPolicy,
 		tpm2.AlgNull,
-		tpm2.AlgSHA256)
+		tpm2.AlgSHA256,
+		//tpm2.AlgSHA384,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("creating session: %v", err)
 	}
+	log.Printf("activateCredentials after creating session")
 	defer tpm2.FlushContext(t.rwc, sessHandle)
 
 	if _, _, err := tpm2.PolicySecret(t.rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessHandle, nil, nil, nil, 0); err != nil {
 		return nil, fmt.Errorf("tpm2.PolicySecret() failed: %v", err)
 	}
+	log.Printf("activateCredentials after policySecret")
 
 	return tpm2.ActivateCredentialUsingAuth(t.rwc, []tpm2.AuthCommand{
 		{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession},

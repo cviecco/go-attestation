@@ -13,3 +13,5 @@ require (
 )
 
 require golang.org/x/crypto v0.35.0 // indirect
+
+replace github.com/google/go-tpm => /home/cviecco/oss/go-tpm
