@@ -26,6 +26,7 @@ var (
 	randomNonce = flag.Bool("random-nonce", false, "Generate a random nonce instead of using one provided")
 	useSHA256   = flag.Bool("sha256", false, "Use SHA256 for quote operatons")
 	useECDSAEK  = flag.Bool("ecdsaek", false, "Use ECDSA EK Key")
+	useECDSAAK  = flag.Bool("ecdsaak", false, "Use ECDSA AK Key")
 )
 
 func main() {
@@ -149,20 +150,13 @@ func printPubKeyDetails(pub interface{}) {
 }
 
 func selftest(tpm *attest.TPM) error {
-	/*
-		var ecdsaParentConfig = attest.ParentKeyConfig{
-			Algorithm: attest.ECDSA,
-			Handle:    0x81000002,
-		}
-
-		akConfig := attest.AKConfig{
-			Parent:    &ecdsaParentConfig,
-			Algorithm: attest.ECDSA,
-		}
-
-		ak, err := tpm.NewAK(&akConfig)
-	*/
-	ak, err := tpm.NewAK(nil)
+	akConfig := attest.AKConfig{
+		Algorithm: attest.RSA,
+	}
+	if *useECDSAAK {
+		akConfig.Algorithm = attest.ECDSA
+	}
+	ak, err := tpm.NewAK(&akConfig)
 	if err != nil {
 		return fmt.Errorf("NewAK() failed: %v", err)
 	}
@@ -194,7 +188,15 @@ func runCommand(tpm *attest.TPM) error {
 		fmt.Printf("Manufacturer: %v\n", info.Manufacturer)
 
 	case "make-ak", "make-aik":
-		k, err := tpm.NewAK(nil)
+		akConfig := attest.AKConfig{
+			Algorithm: attest.RSA,
+		}
+		if *useECDSAAK {
+			akConfig.Algorithm = attest.ECDSA
+		}
+
+		k, err := tpm.NewAK(&akConfig)
+		//k, err := tpm.NewAK(nil)
 		if err != nil {
 			return fmt.Errorf("failed to mint an AK: %v", err)
 		}
@@ -322,8 +324,14 @@ func runDump(tpm *attest.TPM) (*internal.Dump, error) {
 	if out.Static.EKPem, err = rsaEKPEM(tpm); err != nil {
 		return nil, err
 	}
+	akConfig := attest.AKConfig{
+		Algorithm: attest.RSA,
+	}
+	if *useECDSAAK {
+		akConfig.Algorithm = attest.ECDSA
+	}
 
-	k, err := tpm.NewAK(nil)
+	k, err := tpm.NewAK(&akConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to mint an AK: %v", err)
 	}
