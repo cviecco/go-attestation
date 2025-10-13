@@ -43,6 +43,9 @@ const (
 	nvramECCCertIndex    = 0x1c0000a
 	nvramECCEkNonceIndex = 0x1c0000b
 
+	nvram3KRSACertIndex = 0x01c0001c
+	nvramP384CertIndex  = 0x01c00016
+
 	// Defined in "Registry of reserved TPM 2.0 handles and localities", and checked on a glinux machine.
 	commonRSAEkEquivalentHandle = 0x81010001
 	commonECCEkEquivalentHandle = 0x81010002
@@ -110,7 +113,9 @@ var (
 	}
 	// Default RSA and ECC EK templates defined in:
 	// https://trustedcomputinggroup.org/wp-content/uploads/Credential_Profile_EK_V2.0_R14_published.pdf
-	defaultRSAEKTemplate = tpm2.Public{
+
+	rsa2kEKTemplate = tpm2.Public{
+		//defaultRSAEKTemplate = tpm2.Public{
 		Type:    tpm2.AlgRSA,
 		NameAlg: tpm2.AlgSHA256,
 		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
@@ -159,6 +164,35 @@ var (
 			},
 		},
 	}
+	// https://trustedcomputinggroup.org/wp-content/uploads/EK-Credential-Profile-For-TPM-Family-2.0-Level-0-V2.5-R1.0_28March2022.pdf
+	// Section B.4.9
+	rsa3kEKTemplate = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA384,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagAdminWithPolicy | tpm2.FlagRestricted | tpm2.FlagDecrypt,
+		AuthPolicy: []byte{
+			0xB2, 0x6E, 0x7D, 0x28, 0xD1, 0x1A,
+			0x50, 0xBC, 0x53, 0xD8, 0x82, 0xBC,
+			0xF5, 0xFD, 0x3A, 0x1A, 0x07, 0x41,
+			0x48, 0xBB, 0x35, 0xD3, 0xB4, 0xE4,
+			0xCB, 0x1C, 0x0A, 0xD9, 0xBD, 0xE4,
+			0x19, 0xCA, 0xCB, 0x47, 0xBA, 0x09,
+			0x69, 0x96, 0x46, 0x15, 0x0F, 0x9F,
+			0xC0, 0x00, 0xF3, 0xF8, 0x0E, 0x12,
+		},
+		RSAParameters: &tpm2.RSAParams{
+			Symmetric: &tpm2.SymScheme{
+				Alg:     tpm2.AlgAES,
+				KeyBits: 256,
+				Mode:    tpm2.AlgCFB,
+			},
+			KeyBits:    3072,
+			ModulusRaw: make([]byte, 384),
+		},
+	}
+	defaultRSAEKTemplate = rsa2kEKTemplate
+
 	// Basic template for an ECDSA key signing outside-TPM objects. Other
 	// fields are populated depending on the key creation options.
 	ecdsaKeyTemplate = tpm2.Public{

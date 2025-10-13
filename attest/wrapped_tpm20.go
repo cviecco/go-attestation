@@ -194,6 +194,12 @@ func (t *wrappedTPM20) ekCertificates() ([]EK, error) {
 	if eccCert, err := readEKCertFromNVRAM20(t.rwc, nvramECCCertIndex); err == nil {
 		res = append(res, EK{Public: crypto.PublicKey(eccCert.PublicKey), Certificate: eccCert, handle: commonECCEkEquivalentHandle})
 	}
+	if rsa3kCert, err := readEKCertFromNVRAM20(t.rwc, nvram3KRSACertIndex); err == nil {
+		res = append(res, EK{Public: crypto.PublicKey(rsa3kCert.PublicKey), Certificate: rsa3kCert, handle: commonRSAEkEquivalentHandle})
+	}
+	if p384Cert, err := readEKCertFromNVRAM20(t.rwc, nvramP384CertIndex); err == nil {
+		res = append(res, EK{Public: crypto.PublicKey(p384Cert.PublicKey), Certificate: p384Cert, handle: commonECCEkEquivalentHandle})
+	}
 	return res, nil
 }
 
