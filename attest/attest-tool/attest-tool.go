@@ -25,7 +25,7 @@ var (
 	nonceHex    = flag.String("nonce", "", "Hex string to use as nonce when quoting")
 	randomNonce = flag.Bool("random-nonce", false, "Generate a random nonce instead of using one provided")
 	useSHA256   = flag.Bool("sha256", false, "Use SHA256 for quote operatons")
-	useECDSAEK  = flag.Bool("ecdsaek", false, "Use ECDSA EK Key")
+	ekCertIndex = flag.Int("ekcertindex", 0, "Use ECDSA EK Key")
 	useECDSAAK  = flag.Bool("ecdsaak", false, "Use ECDSA AK Key")
 )
 
@@ -63,16 +63,24 @@ func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
 		return errors.New("no EK present")
 	}
 	log.Printf("selftestCredentialActivation after tpm.EKs() %+v", eks)
-	ek := eks[0].Public
+	indexToUse := 0
+	//ek := eks[0].Public
 	// This selection is terrible, but we need to start to test
-	if *useECDSAEK && len(eks) > 1 {
-		ek = eks[1].Public
+	if *ekCertIndex > 0 && len(eks) > *ekCertIndex {
+		indexToUse = *ekCertIndex
 	}
+	/*
+		if *useECDSAEK && len(eks) > 3 {
+			ek = eks[3].Public
+		}
+	*/
+	log.Printf("Using cert[%d]", indexToUse)
+	ek := eks[indexToUse].Public
 
-	log.Printf("ektype=%T", ek)
+	log.Printf("ektype(cert)=%T", ek)
 	printPubKeyDetails(ek)
 
-	// Test credential activation.
+	// Test credential activation
 	ap := attest.ActivationParameters{
 		EK: ek,
 		AK: ak.AttestationParameters(),
@@ -156,6 +164,13 @@ func selftest(tpm *attest.TPM) error {
 	if *useECDSAAK {
 		akConfig.Algorithm = attest.ECDSA
 	}
+	/*
+		// EccParentConfig ->
+		// NewAK() failed: CreateKeyEx() failed: handle 1, error code 0xa : the type of the value is not appropriate for the use
+		if *useECDSAEK {
+			akConfig.Parent = &attest.EccParentConfig
+		}
+	*/
 	ak, err := tpm.NewAK(&akConfig)
 	if err != nil {
 		return fmt.Errorf("NewAK() failed: %v", err)

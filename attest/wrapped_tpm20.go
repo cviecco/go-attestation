@@ -67,6 +67,7 @@ func (t *wrappedTPM20) rsaEkTemplate() tpm2.Public {
 }
 
 func (t *wrappedTPM20) eccEkTemplate() tpm2.Public {
+	log.Printf("wrappedTPM eccEKTemplate top")
 	if t.tpmECCEkTemplate != nil {
 		return *t.tpmECCEkTemplate
 	}
@@ -186,19 +187,80 @@ func (t *wrappedTPM20) getStorageRootKeyHandle(parent ParentKeyConfig) (tpmutil.
 	return srkHandle, true, nil
 }
 
+func (t *wrappedTPM20) getKeyHandleKeyMap() (map[crypto.PublicKey]tpmutil.Handle, error) {
+	rvalue := make(map[crypto.PublicKey]tpmutil.Handle)
+	// NOTE: this list should be replaced by a call to an
+	// equivalent of:  "tpm2_getcap handles-persistent"
+	keyHandlesToSearch := []tpmutil.Handle{
+		0x81010001,
+		0x81010002,
+		0x81010003,
+		0x81010004,
+	}
+	for _, keyHandle := range keyHandlesToSearch {
+		pub, _, _, err := tpm2.ReadPublic(t.rwc, keyHandle)
+		if err != nil {
+			log.Printf("unable to read handle=%x", keyHandle)
+			continue
+		}
+		log.Printf("pub[%x]=%+v", keyHandle, pub)
+		if pub.RSAParameters != nil || pub.ECCParameters != nil {
+			key, err := pub.Key()
+			if err != nil {
+				return nil, err
+			}
+			rvalue[key] = keyHandle
+		}
+	}
+	return rvalue, nil
+}
+
 func (t *wrappedTPM20) ekCertificates() ([]EK, error) {
 	var res []EK
-	if rsaCert, err := readEKCertFromNVRAM20(t.rwc, nvramRSACertIndex); err == nil {
-		res = append(res, EK{Public: crypto.PublicKey(rsaCert.PublicKey), Certificate: rsaCert, handle: commonRSAEkEquivalentHandle})
+	certIndexes := []int{nvramRSACertIndex, nvramECCCertIndex, nvram3KRSACertIndex, nvramP384CertIndex}
+
+	keyHandleMap, err := t.getKeyHandleKeyMap()
+	if err != nil {
+		log.Printf("error computing handlemap")
+		return nil, err
 	}
-	if eccCert, err := readEKCertFromNVRAM20(t.rwc, nvramECCCertIndex); err == nil {
-		res = append(res, EK{Public: crypto.PublicKey(eccCert.PublicKey), Certificate: eccCert, handle: commonECCEkEquivalentHandle})
-	}
-	if rsa3kCert, err := readEKCertFromNVRAM20(t.rwc, nvram3KRSACertIndex); err == nil {
-		res = append(res, EK{Public: crypto.PublicKey(rsa3kCert.PublicKey), Certificate: rsa3kCert, handle: commonRSAEkEquivalentHandle})
-	}
-	if p384Cert, err := readEKCertFromNVRAM20(t.rwc, nvramP384CertIndex); err == nil {
-		res = append(res, EK{Public: crypto.PublicKey(p384Cert.PublicKey), Certificate: p384Cert, handle: commonECCEkEquivalentHandle})
+	for _, certIndex := range certIndexes {
+		if cert, err := readEKCertFromNVRAM20(t.rwc, tpmutil.Handle(certIndex)); err == nil {
+			var handleToUse tpmutil.Handle
+			keyfound := false
+		FindKeyHandleLoop:
+			//This section finds the keyhandle
+			for key, keyHandle := range keyHandleMap {
+				log.Printf("handlemap loop")
+				switch k := key.(type) {
+				case *rsa.PublicKey:
+					log.Printf("type rsa handle=%x", keyHandle)
+					if k.Equal(cert.PublicKey) {
+						log.Printf("found rsa")
+						handleToUse = keyHandle
+						keyfound = true
+						break FindKeyHandleLoop
+					}
+				case *ecdsa.PublicKey:
+					log.Printf("type ecdsa handle=%x", keyHandle)
+					if k.Equal(cert.PublicKey) {
+						log.Printf("found ecdsa handle=%x", keyHandle)
+						handleToUse = keyHandle
+						keyfound = true
+						break FindKeyHandleLoop
+					}
+				default:
+					log.Printf("Type not recognized  %T!\n", k)
+				}
+			}
+			if !keyfound {
+				log.Printf("key for cert[%x] not found", certIndex)
+				continue
+			}
+			log.Printf("appending to list certindex[%x] keyHandle[%x]", certIndex, handleToUse)
+
+			res = append(res, EK{Public: crypto.PublicKey(cert.PublicKey), Certificate: cert, handle: handleToUse})
+		}
 	}
 	return res, nil
 }
@@ -634,7 +696,7 @@ func (k *wrappedKey20) activateCredential(tb tpmBase, in EncryptedCredential, ek
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("actcateCredentials after getendorsementkeyhandle")
+	log.Printf("actcateCredentials after getendorsementkeyhandle ")
 
 	sessHandle, _, err := tpm2.StartAuthSession(
 		t.rwc,
@@ -766,6 +828,7 @@ func (k *wrappedKey20) signWithValidation(tb tpmBase, digest []byte, pub crypto.
 }
 
 func signECDSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, curve elliptic.Curve, opts crypto.SignerOpts, validation *tpm2.Ticket) ([]byte, error) {
+	log.Printf("top of wrappedtpm signECDSA")
 	if _, ok := opts.(*rsa.PSSOptions); ok {
 		return nil, fmt.Errorf("cannot use rsa.PSSOptions with ECDSA key")
 	}

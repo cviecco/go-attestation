@@ -94,7 +94,7 @@ var defaultParentConfig = ParentKeyConfig{
 	Handle:    0x81000001,
 }
 
-var eccParentConfig = ParentKeyConfig{
+var EccParentConfig = ParentKeyConfig{
 	Algorithm: ECDSA,
 	Handle:    0x81000002,
 }
