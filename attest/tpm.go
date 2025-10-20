@@ -24,6 +24,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"strings"
 
@@ -273,6 +274,23 @@ func readVendorAttributes(tpm io.ReadWriter) (tpmInfo, error) {
 		fwMajor:      int((fw.Value & 0xffff0000) >> 16),
 		fwMinor:      int(fw.Value & 0x0000ffff),
 	}, nil
+}
+
+func readPersistenHandles(tpm io.ReadWriter) ([]int, error) {
+	// func GetCapability(rw io.ReadWriter, capa Capability, count, property uint32) (vals []interface{}, moreData bool, err error) {
+	caps, _, err := tpm2.GetCapability(tpm, tpm2.CapabilityHandles, 1, uint32(tpm2.HandleTypePersistent))
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("caps(%T)=%v ", caps, caps)
+	/*
+		subset, ok := caps[0].(int)
+		if ok {
+			log.Printf("is type val=%x", subset)
+		}
+	*/
+
+	return nil, nil
 }
 
 // ParseEKCertificate parses a raw DER encoded EK certificate blob.

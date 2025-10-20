@@ -115,6 +115,7 @@ func (t *wrappedTPM20) getEndorsementKeyHandle(ek *EK) (tpmutil.Handle, bool, er
 
 	if ek == nil {
 		// The default is RSA for backward compatibility.
+		log.Printf("wrappedTpM getEndorsementKeyHandle ek is nil")
 		ekHandle = commonRSAEkEquivalentHandle
 		ekTemplate = t.rsaEkTemplate()
 	} else {
@@ -188,6 +189,12 @@ func (t *wrappedTPM20) getStorageRootKeyHandle(parent ParentKeyConfig) (tpmutil.
 }
 
 func (t *wrappedTPM20) getKeyHandleKeyMap() (map[crypto.PublicKey]tpmutil.Handle, error) {
+
+	_, err := readPersistenHandles(t.rwc)
+	if err != nil {
+		log.Printf("error erading handles %w", err)
+	}
+
 	rvalue := make(map[crypto.PublicKey]tpmutil.Handle)
 	// NOTE: this list should be replaced by a call to an
 	// equivalent of:  "tpm2_getcap handles-persistent"

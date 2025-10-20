@@ -55,7 +55,6 @@ func main() {
 
 func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
 	eks, err := tpm.EKCertificates()
-	//eks, err := tpm.EKs()
 	if err != nil {
 		return fmt.Errorf("EKs() failed: %v", err)
 	}
@@ -64,16 +63,9 @@ func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
 	}
 	log.Printf("selftestCredentialActivation after tpm.EKs() %+v", eks)
 	indexToUse := 0
-	//ek := eks[0].Public
-	// This selection is terrible, but we need to start to test
 	if *ekCertIndex > 0 && len(eks) > *ekCertIndex {
 		indexToUse = *ekCertIndex
 	}
-	/*
-		if *useECDSAEK && len(eks) > 3 {
-			ek = eks[3].Public
-		}
-	*/
 	log.Printf("Using cert[%d]", indexToUse)
 	ek := eks[indexToUse].Public
 
@@ -97,7 +89,7 @@ func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
 		return fmt.Errorf("failed to generate activation challenge: %v", err)
 	}
 	log.Printf("selftestCredentialActivation after ap.Generate")
-	decryptedSecret, err := ak.ActivateCredential(tpm, *ec)
+	decryptedSecret, err := ak.ActivateCredentialWithEK(tpm, *ec, eks[indexToUse])
 	if err != nil {
 		return fmt.Errorf("failed to generate activate credential: %v", err)
 	}
