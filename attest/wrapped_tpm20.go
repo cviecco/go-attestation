@@ -188,12 +188,88 @@ func (t *wrappedTPM20) getStorageRootKeyHandle(parent ParentKeyConfig) (tpmutil.
 	return srkHandle, true, nil
 }
 
+// TPM property index values
+const (
+	TPMFixedProps           uint32 = 0x100
+	TPMFamily                      = TPMFixedProps
+	TPMManufacturer                = TPMFixedProps + 5
+	TPMModel                       = TPMFixedProps + 10
+	TPMFirmware1                   = TPMFixedProps + 11
+	TPMFirmware2                   = TPMFixedProps + 12
+	TPMMinPersistentObjects        = TPMFixedProps + 15
+	TPMMaxSessions                 = TPMFixedProps + 17
+	TPMPCRCount                    = TPMFixedProps + 18
+)
+
+func getTPMCapability(tpm io.ReadWriteCloser, capability tpm2.Capability, count, property uint32) []interface{} {
+	retval, moreData, err := tpm2.GetCapability(tpm, capability, count, property)
+	if err != nil {
+		log.Printf(
+			"Failed to get property 0x%x of capability 0x%x: %+v",
+			property,
+			capability,
+			err,
+		)
+		return nil
+	}
+	if moreData {
+		log.Printf(
+			"More data when getting property 0x%x of capability 0x%x",
+			property,
+			capability,
+		)
+	}
+
+	return retval
+}
+
+func getTPMProperty(tpm io.ReadWriteCloser, property uint32) uint32 {
+	cap := getTPMCapability(tpm, tpm2.CapabilityTPMProperties, 1, property)
+	if cap == nil {
+		log.Printf(
+			"Could not retrieve the requested TPM property 0x%x",
+			property,
+		)
+		return 0
+	}
+	prop, ok := cap[0].(tpm2.TaggedProperty)
+	if !ok {
+		log.Printf(
+			"Did not get a TaggedProperty for TPM property 0x%x: %+v",
+			property,
+			cap[0],
+		)
+		return 0
+	}
+
+	log.Printf("Got prop=%+v", prop)
+	return prop.Value
+}
+
+func getTPMMinPersistentObjects(tpm io.ReadWriteCloser) string {
+	minPersistent := getTPMProperty(tpm, TPMMinPersistentObjects)
+	return fmt.Sprintf("%d", minPersistent)
+}
+
+func getTPMAlgorithms(tpm io.ReadWriteCloser) {
+	cap := getTPMCapability(tpm, tpm2.CapabilityHandles, 128, 1)
+	//algorithms := make([]string, 0)
+	for i, algIface := range cap {
+		log.Printf("cap[%d]=%v", i, algIface)
+	}
+	log.Printf("Got TPM alg list: %+v", cap)
+}
+
 func (t *wrappedTPM20) getKeyHandleKeyMap() (map[crypto.PublicKey]tpmutil.Handle, error) {
 
 	_, err := readPersistenHandles(t.rwc)
 	if err != nil {
-		log.Printf("error erading handles %w", err)
+		log.Printf("error erading handles %s", err)
 	}
+	getTPMAlgorithms(t.rwc)
+
+	minpers := getTPMMinPersistentObjects(t.rwc)
+	log.Printf("minpers=%s", minpers)
 
 	rvalue := make(map[crypto.PublicKey]tpmutil.Handle)
 	// NOTE: this list should be replaced by a call to an

@@ -37,6 +37,8 @@ const (
 	tpmPtManufacturer = 0x00000100 + 5  // PT_FIXED + offset of 5
 	tpmPtVendorString = 0x00000100 + 6  // PT_FIXED + offset of 6
 	tpmPtFwVersion1   = 0x00000100 + 11 // PT_FIXED + offset of 11
+	//tpmPtVar          =
+	tpmPtPersistent = 0x00000100*2 + 8 // PT_FIXED + offset of 14
 
 	// Defined in "Registry of reserved TPM 2.0 handles and localities".
 	nvramRSACertIndex    = 0x1c00002
@@ -278,7 +280,7 @@ func readVendorAttributes(tpm io.ReadWriter) (tpmInfo, error) {
 
 func readPersistenHandles(tpm io.ReadWriter) ([]int, error) {
 	// func GetCapability(rw io.ReadWriter, capa Capability, count, property uint32) (vals []interface{}, moreData bool, err error) {
-	caps, _, err := tpm2.GetCapability(tpm, tpm2.CapabilityHandles, 1, uint32(tpm2.HandleTypePersistent))
+	caps, _, err := tpm2.GetCapability(tpm, tpm2.CapabilityHandles, 1, tpmPtPersistent)
 	if err != nil {
 		return nil, err
 	}
