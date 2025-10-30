@@ -67,7 +67,6 @@ func (t *wrappedTPM20) rsaEkTemplate() tpm2.Public {
 }
 
 func (t *wrappedTPM20) eccEkTemplate() tpm2.Public {
-	log.Printf("wrappedTPM eccEKTemplate top")
 	if t.tpmECCEkTemplate != nil {
 		return *t.tpmECCEkTemplate
 	}
@@ -115,7 +114,6 @@ func (t *wrappedTPM20) getEndorsementKeyHandle(ek *EK) (tpmutil.Handle, bool, er
 
 	if ek == nil {
 		// The default is RSA for backward compatibility.
-		log.Printf("wrappedTpM getEndorsementKeyHandle ek is nil")
 		ekHandle = commonRSAEkEquivalentHandle
 		ekTemplate = t.rsaEkTemplate()
 	} else {

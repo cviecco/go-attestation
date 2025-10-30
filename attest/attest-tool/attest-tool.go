@@ -70,7 +70,8 @@ func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
 	if *verbose {
 		printPubKeyDetails(ek)
 	}
-	// Test credential activation
+
+	// Test credential activation.
 	ap := attest.ActivationParameters{
 		EK: ek,
 		AK: ak.AttestationParameters(),

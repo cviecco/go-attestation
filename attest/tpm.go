@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/url"
 	"strings"
 
@@ -54,9 +53,6 @@ const (
 	// Defined in "Registry of reserved TPM 2.0 handles and localities", and checked on a glinux machine.
 	commonRSAEkEquivalentHandle = 0x81010001
 	commonECCEkEquivalentHandle = 0x81010002
-
-	// in the 13 gen lenovo.. the key refered in 0x81010001 is a 3k key
-	//common3kRSAEKEquivHandle =    0x81010001
 )
 
 var (
@@ -122,8 +118,7 @@ var (
 	// Default RSA and ECC EK templates defined in:
 	// https://trustedcomputinggroup.org/wp-content/uploads/Credential_Profile_EK_V2.0_R14_published.pdf
 
-	rsa2kEKTemplate = tpm2.Public{
-		//defaultRSAEKTemplate = tpm2.Public{
+	defaultRSAEKTemplate = tpm2.Public{
 		Type:    tpm2.AlgRSA,
 		NameAlg: tpm2.AlgSHA256,
 		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
@@ -172,34 +167,6 @@ var (
 			},
 		},
 	}
-	// https://trustedcomputinggroup.org/wp-content/uploads/EK-Credential-Profile-For-TPM-Family-2.0-Level-0-V2.5-R1.0_28March2022.pdf
-	// Section B.4.9
-	rsa3kEKTemplate = tpm2.Public{
-		Type:    tpm2.AlgRSA,
-		NameAlg: tpm2.AlgSHA384,
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagAdminWithPolicy | tpm2.FlagRestricted | tpm2.FlagDecrypt,
-		AuthPolicy: []byte{
-			0xB2, 0x6E, 0x7D, 0x28, 0xD1, 0x1A,
-			0x50, 0xBC, 0x53, 0xD8, 0x82, 0xBC,
-			0xF5, 0xFD, 0x3A, 0x1A, 0x07, 0x41,
-			0x48, 0xBB, 0x35, 0xD3, 0xB4, 0xE4,
-			0xCB, 0x1C, 0x0A, 0xD9, 0xBD, 0xE4,
-			0x19, 0xCA, 0xCB, 0x47, 0xBA, 0x09,
-			0x69, 0x96, 0x46, 0x15, 0x0F, 0x9F,
-			0xC0, 0x00, 0xF3, 0xF8, 0x0E, 0x12,
-		},
-		RSAParameters: &tpm2.RSAParams{
-			Symmetric: &tpm2.SymScheme{
-				Alg:     tpm2.AlgAES,
-				KeyBits: 256,
-				Mode:    tpm2.AlgCFB,
-			},
-			KeyBits:    3072,
-			ModulusRaw: make([]byte, 384),
-		},
-	}
-	defaultRSAEKTemplate = rsa2kEKTemplate
 
 	// Basic template for an ECDSA key signing outside-TPM objects. Other
 	// fields are populated depending on the key creation options.
@@ -274,23 +241,6 @@ func readVendorAttributes(tpm io.ReadWriter) (tpmInfo, error) {
 		fwMajor:      int((fw.Value & 0xffff0000) >> 16),
 		fwMinor:      int(fw.Value & 0x0000ffff),
 	}, nil
-}
-
-func readPersistenHandles(tpm io.ReadWriter) ([]int, error) {
-	// func GetCapability(rw io.ReadWriter, capa Capability, count, property uint32) (vals []interface{}, moreData bool, err error) {
-	caps, _, err := tpm2.GetCapability(tpm, tpm2.CapabilityHandles, 1, uint32(tpm2.HandleTypePersistent))
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("caps(%T)=%v ", caps, caps)
-	/*
-		subset, ok := caps[0].(int)
-		if ok {
-			log.Printf("is type val=%x", subset)
-		}
-	*/
-
-	return nil, nil
 }
 
 // ParseEKCertificate parses a raw DER encoded EK certificate blob.
