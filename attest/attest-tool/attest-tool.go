@@ -54,7 +54,29 @@ func main() {
 	}
 }
 
+func findValidEKCert(tpm *attest.TPM) (*attest.EK, error) {
+	eks, err := tpm.EKCertificates()
+	if err != nil {
+		return nil, err
+	}
+	for _, ek := range eks {
+		pubKey, ok := ek.Public.(*rsa.PublicKey)
+		if ok {
+			// this is an 2048 bit key
+			if pubKey.Size() <= 256 {
+				return &ek, nil
+			}
+		}
+	}
+	return nil, errors.New("unable to find valid EK certificate")
+}
+
 func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
+	_, err := findValidEKCert(tpm)
+	if err != nil {
+		return fmt.Errorf("findValidEkCert failed: %v", err)
+	}
+
 	eks, err := tpm.EKCertificates()
 	if err != nil {
 		return fmt.Errorf("EKCertificates() failed: %v", err)

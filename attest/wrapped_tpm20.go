@@ -107,6 +107,20 @@ func (t *wrappedTPM20) info() (*TPMInfo, error) {
 	return &tInfo, nil
 }
 
+func (t *wrappedTPM20) createEK(ekTemplate tpm2.Public, ekHandle tpmutil.Handle, rerr error) error {
+	keyHnd, _, err := tpm2.CreatePrimary(t.rwc, tpm2.HandleEndorsement, tpm2.PCRSelection{}, "", "", ekTemplate)
+	if err != nil {
+		return fmt.Errorf("ReadPublic failed (%v), and then CreatePrimary failed: %v", rerr, err)
+	}
+	defer tpm2.FlushContext(t.rwc, keyHnd)
+
+	err = tpm2.EvictControl(t.rwc, "", tpm2.HandleOwner, keyHnd, ekHandle)
+	if err != nil {
+		return fmt.Errorf("EvictControl failed: %v", err)
+	}
+	return nil
+}
+
 // Return value: handle, whether we generated a new one, error.
 func (t *wrappedTPM20) getEndorsementKeyHandle(ek *EK) (tpmutil.Handle, bool, error) {
 	var ekHandle tpmutil.Handle
@@ -139,15 +153,9 @@ func (t *wrappedTPM20) getEndorsementKeyHandle(ek *EK) (tpmutil.Handle, bool, er
 	}
 	rerr := err // Preserve this failure for later logging, if needed
 
-	keyHnd, _, err := tpm2.CreatePrimary(t.rwc, tpm2.HandleEndorsement, tpm2.PCRSelection{}, "", "", ekTemplate)
+	err = t.createEK(ekTemplate, ekHandle, rerr)
 	if err != nil {
-		return 0, false, fmt.Errorf("ReadPublic failed (%v), and then CreatePrimary failed: %v", rerr, err)
-	}
-	defer tpm2.FlushContext(t.rwc, keyHnd)
-
-	err = tpm2.EvictControl(t.rwc, "", tpm2.HandleOwner, keyHnd, ekHandle)
-	if err != nil {
-		return 0, false, fmt.Errorf("EvictControl failed: %v", err)
+		return 0, false, err
 	}
 
 	return ekHandle, true, nil
@@ -172,15 +180,10 @@ func (t *wrappedTPM20) getStorageRootKeyHandle(parent ParentKeyConfig) (tpmutil.
 	default:
 		return 0, false, fmt.Errorf("unsupported SRK algorithm: %v", parent.Algorithm)
 	}
-	keyHnd, _, err := tpm2.CreatePrimary(t.rwc, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", srkTemplate)
-	if err != nil {
-		return 0, false, fmt.Errorf("ReadPublic failed (%v), and then CreatePrimary failed: %v", rerr, err)
-	}
-	defer tpm2.FlushContext(t.rwc, keyHnd)
 
-	err = tpm2.EvictControl(t.rwc, "", tpm2.HandleOwner, keyHnd, srkHandle)
+	err = t.createEK(srkTemplate, srkHandle, rerr)
 	if err != nil {
-		return 0, false, fmt.Errorf("EvictControl failed: %v", err)
+		return 0, false, err
 	}
 
 	return srkHandle, true, nil
@@ -245,10 +248,21 @@ func (t *wrappedTPM20) ekCertificates() ([]EK, error) {
 				}
 			}
 			if !keyfound {
-				log.Printf("key for cert[%x] not found", certIndex)
-				continue
+				if certIndex == nvramRSACertIndex {
+					_, ok := keyHandleMap[commonECCEkEquivalentHandle+1]
+					if ok {
+						continue
+					}
+					ekTemplate := t.rsaEkTemplate()
+					err = t.createEK(ekTemplate, commonECCEkEquivalentHandle+1, fmt.Errorf(""))
+					if err != nil {
+						return nil, err
+					}
+					handleToUse = commonECCEkEquivalentHandle + 1
+				} else {
+					continue
+				}
 			}
-
 			res = append(res, EK{Public: crypto.PublicKey(cert.PublicKey), Certificate: cert, handle: handleToUse})
 		}
 	}
