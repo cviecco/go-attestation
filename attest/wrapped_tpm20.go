@@ -24,7 +24,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -107,6 +106,7 @@ func (t *wrappedTPM20) info() (*TPMInfo, error) {
 	return &tInfo, nil
 }
 
+// createEK creates a persistent EK given the given template the the handle location
 func (t *wrappedTPM20) createEK(ekTemplate tpm2.Public, ekHandle tpmutil.Handle, rerr error) error {
 	keyHnd, _, err := tpm2.CreatePrimary(t.rwc, tpm2.HandleEndorsement, tpm2.PCRSelection{}, "", "", ekTemplate)
 	if err != nil {
@@ -244,7 +244,7 @@ func (t *wrappedTPM20) ekCertificates() ([]EK, error) {
 						break FindKeyHandleLoop
 					}
 				default:
-					log.Printf("Type not recognized  %T!\n", k)
+					return nil, fmt.Errorf("unsupported public key type %T", k)
 				}
 			}
 			if !keyfound {
@@ -271,6 +271,7 @@ func (t *wrappedTPM20) ekCertificates() ([]EK, error) {
 
 func (t *wrappedTPM20) eks() ([]EK, error) {
 	if cert, err := readEKCertFromNVRAM20(t.rwc, nvramRSACertIndex); err == nil {
+		//check handle
 		return []EK{
 			{Public: crypto.PublicKey(cert.PublicKey), Certificate: cert, handle: commonRSAEkEquivalentHandle},
 		}, nil
