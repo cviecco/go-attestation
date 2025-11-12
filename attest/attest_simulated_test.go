@@ -60,6 +60,19 @@ func TestSimEK(t *testing.T) {
 	}
 }
 
+func TestSimEKCertificates(t *testing.T) {
+	sim, tpm := setupSimulatedTPM(t)
+	defer sim.Close()
+
+	eks, err := tpm.EKCertificates()
+	if err != nil {
+		t.Errorf("EKs() failed: %v", err)
+	}
+	if len(eks) == 0 || (eks[0].Public == nil) {
+		t.Errorf("EKs() = %v, want at least 1 EK with populated fields", eks)
+	}
+}
+
 func TestSimInfo(t *testing.T) {
 	sim, tpm := setupSimulatedTPM(t)
 	defer sim.Close()

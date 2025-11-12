@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"strings"
 
@@ -445,6 +446,7 @@ func (t *TPM) Close() error {
 // and the TPM contains an ECC EK Certificate, the EKCertificates() method
 // should be used to retrieve the EKs.
 func (t *TPM) EKs() ([]EK, error) {
+	log.Printf("tpm.gp EKs() top")
 	return t.tpm.eks()
 }
 
