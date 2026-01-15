@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/google/go-attestation/attest"
@@ -24,6 +25,9 @@ var (
 	nonceHex    = flag.String("nonce", "", "Hex string to use as nonce when quoting")
 	randomNonce = flag.Bool("random-nonce", false, "Generate a random nonce instead of using one provided")
 	useSHA256   = flag.Bool("sha256", false, "Use SHA256 for quote operations")
+	ekCertIndex = flag.Int("ekcertindex", 0, "Use ECDSA EK Key")
+	useECDSAAK  = flag.Bool("ecdsaak", false, "Use ECDSA AK Key")
+	verbose     = flag.Bool("verbose", false, "Print debug information")
 )
 
 func main() {
@@ -50,15 +54,44 @@ func main() {
 	}
 }
 
-func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
-	eks, err := tpm.EKs()
+func findValidEKCert(tpm *attest.TPM) (*attest.EK, error) {
+	eks, err := tpm.EKCertificates()
 	if err != nil {
-		return fmt.Errorf("EKs() failed: %v", err)
+		return nil, err
+	}
+	for _, ek := range eks {
+		pubKey, ok := ek.Public.(*rsa.PublicKey)
+		if ok {
+			// this is an 2048 bit key
+			if pubKey.Size() <= 256 {
+				return &ek, nil
+			}
+		}
+	}
+	return nil, errors.New("unable to find valid EK certificate")
+}
+
+func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
+	_, err := findValidEKCert(tpm)
+	if err != nil {
+		return fmt.Errorf("findValidEkCert failed: %v", err)
+	}
+
+	eks, err := tpm.EKCertificates()
+	if err != nil {
+		return fmt.Errorf("EKCertificates() failed: %v", err)
 	}
 	if len(eks) == 0 {
 		return errors.New("no EK present")
 	}
-	ek := eks[0].Public
+	indexToUse := 0
+	if *ekCertIndex > 0 && len(eks) > *ekCertIndex {
+		indexToUse = *ekCertIndex
+	}
+	ek := eks[indexToUse].Public
+	if *verbose {
+		printPubKeyDetails(ek)
+	}
 
 	// Test credential activation.
 	ap := attest.ActivationParameters{
@@ -69,7 +102,7 @@ func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
 	if err != nil {
 		return fmt.Errorf("failed to generate activation challenge: %v", err)
 	}
-	decryptedSecret, err := ak.ActivateCredential(tpm, *ec)
+	decryptedSecret, err := ak.ActivateCredentialWithEK(tpm, *ec, eks[indexToUse])
 	if err != nil {
 		return fmt.Errorf("failed to generate activate credential: %v", err)
 	}
@@ -114,10 +147,32 @@ func selftestAttest(tpm *attest.TPM, ak *attest.AK) error {
 	return nil
 }
 
+func printPubKeyDetails(pub interface{}) {
+	switch k := pub.(type) {
+	case *rsa.PublicKey:
+		log.Printf("rsa, size=%d", k.Size()*8)
+	case *ecdsa.PublicKey:
+		log.Printf("ecdsa bitsize=%d", k.Curve.Params().BitSize)
+	default:
+		log.Printf("uknown type")
+	}
+}
+
 func selftest(tpm *attest.TPM) error {
-	ak, err := tpm.NewAK(nil)
+	akConfig := attest.AKConfig{
+		Algorithm: attest.RSA,
+	}
+	if *useECDSAAK {
+		akConfig.Algorithm = attest.ECDSA
+	}
+	ak, err := tpm.NewAK(&akConfig)
 	if err != nil {
 		return fmt.Errorf("NewAK() failed: %v", err)
+	}
+	akPub := ak.Public()
+	if *verbose {
+		log.Printf("akpub type =%T", akPub)
+		printPubKeyDetails(akPub)
 	}
 	defer ak.Close(tpm)
 	if err := selftestCredentialActivation(tpm, ak); err != nil {
@@ -141,7 +196,14 @@ func runCommand(tpm *attest.TPM) error {
 		fmt.Printf("Manufacturer: %v\n", info.Manufacturer)
 
 	case "make-ak", "make-aik":
-		k, err := tpm.NewAK(nil)
+		akConfig := attest.AKConfig{
+			Algorithm: attest.RSA,
+		}
+		if *useECDSAAK {
+			akConfig.Algorithm = attest.ECDSA
+		}
+
+		k, err := tpm.NewAK(&akConfig)
 		if err != nil {
 			return fmt.Errorf("failed to mint an AK: %v", err)
 		}
@@ -180,7 +242,7 @@ func runCommand(tpm *attest.TPM) error {
 		fmt.Printf("Signature: %x\n", q.Signature)
 
 	case "list-eks":
-		eks, err := tpm.EKs()
+		eks, err := tpm.EKCertificates()
 		if err != nil {
 			return fmt.Errorf("failed to read EKs: %v", err)
 		}
@@ -269,8 +331,14 @@ func runDump(tpm *attest.TPM) (*internal.Dump, error) {
 	if out.Static.EKPem, err = rsaEKPEM(tpm); err != nil {
 		return nil, err
 	}
+	akConfig := attest.AKConfig{
+		Algorithm: attest.RSA,
+	}
+	if *useECDSAAK {
+		akConfig.Algorithm = attest.ECDSA
+	}
 
-	k, err := tpm.NewAK(nil)
+	k, err := tpm.NewAK(&akConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to mint an AK: %v", err)
 	}
