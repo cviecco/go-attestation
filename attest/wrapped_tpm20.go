@@ -207,6 +207,9 @@ func serializePublicKey(pub crypto.PublicKey) (string, error) {
 // a value inmediatelly after the ECC (p256) handle.
 const altRSAEkEquivalentHandle = commonECCEkEquivalentHandle + 1
 
+var altEKHandles = []tpmutil.Handle{altRSAEkEquivalentHandle + 1,
+	altRSAEkEquivalentHandle + 2}
+
 // creates a map of a base64 pkcs8 encoding of public keys to handles
 func (t *wrappedTPM20) getKeyHandleKeyMap() (map[string]tpmutil.Handle, map[tpmutil.Handle]struct{}, error) {
 	key2Handle := make(map[string]tpmutil.Handle)
@@ -219,6 +222,7 @@ func (t *wrappedTPM20) getKeyHandleKeyMap() (map[string]tpmutil.Handle, map[tpmu
 		commonRSAEkEquivalentHandle,
 		commonECCEkEquivalentHandle,
 		altRSAEkEquivalentHandle,
+		altRSAEkEquivalentHandle + 1,
 	}
 	for _, keyHandle := range knownHandlesToSearch {
 		pub, _, _, err := tpm2.ReadPublic(t.rwc, keyHandle)
@@ -263,7 +267,7 @@ func (t *wrappedTPM20) create2048RSAEKInAvailableSlot(handleFoundMap map[tpmutil
 
 func (t *wrappedTPM20) ekCertificates() ([]EK, error) {
 	var res []EK
-	certIndexes := []int{nvramRSACertIndex, nvramECCCertIndex}
+	certIndexes := []int{nvramRSACertIndex, nvramECCCertIndex, nvramECCP384CertIndex, nvramRSA3KCertIndex}
 	keyHandleMap, handleFoundMap, err := t.getKeyHandleKeyMap()
 	if err != nil {
 		return nil, err
@@ -711,6 +715,7 @@ func (k *wrappedKey20) activateCredential(tb tpmBase, in EncryptedCredential, ek
 
 	sessHandle, _, err := tpm2.StartAuthSession(
 		t.rwc,
+		//ek.handle,        /*tpmKey*/
 		tpm2.HandleNull,  /*tpmKey*/
 		tpm2.HandleNull,  /*bindKey*/
 		make([]byte, 16), /*nonceCaller*/

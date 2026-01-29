@@ -38,10 +38,12 @@ const (
 	tpmPtFwVersion1   = 0x00000100 + 11 // PT_FIXED + offset of 11
 
 	// Defined in "Registry of reserved TPM 2.0 handles and localities".
-	nvramRSACertIndex    = 0x1c00002
-	nvramRSAEkNonceIndex = 0x1c00003
-	nvramECCCertIndex    = 0x1c0000a
-	nvramECCEkNonceIndex = 0x1c0000b
+	nvramRSACertIndex     = 0x1c00002
+	nvramRSAEkNonceIndex  = 0x1c00003
+	nvramECCCertIndex     = 0x1c0000a
+	nvramECCEkNonceIndex  = 0x1c0000b
+	nvramECCP384CertIndex = 0x1c00016
+	nvramRSA3KCertIndex   = 0x1c0001c
 
 	// Defined in "Registry of reserved TPM 2.0 handles and localities", and checked on a glinux machine.
 	commonRSAEkEquivalentHandle = 0x81010001
@@ -159,6 +161,30 @@ var (
 			},
 		},
 	}
+	defaultRSA3072EKTemplate = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA384,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagAdminWithPolicy | tpm2.FlagRestricted | tpm2.FlagDecrypt,
+		AuthPolicy: []byte{
+			0x83, 0x71, 0x97, 0x67, 0x44, 0x84,
+			0xB3, 0xF8, 0x1A, 0x90, 0xCC, 0x8D,
+			0x46, 0xA5, 0xD7, 0x24, 0xFD, 0x52,
+			0xD7, 0x6E, 0x06, 0x52, 0x0B, 0x64,
+			0xF2, 0xA1, 0xDA, 0x1B, 0x33, 0x14,
+			0x69, 0xAA,
+		},
+		RSAParameters: &tpm2.RSAParams{
+			Symmetric: &tpm2.SymScheme{
+				Alg:     tpm2.AlgAES,
+				KeyBits: 256,
+				Mode:    tpm2.AlgCFB,
+			},
+			KeyBits:    3072,
+			ModulusRaw: make([]byte, 384),
+		},
+	}
+
 	// Basic template for an ECDSA key signing outside-TPM objects. Other
 	// fields are populated depending on the key creation options.
 	ecdsaKeyTemplate = tpm2.Public{

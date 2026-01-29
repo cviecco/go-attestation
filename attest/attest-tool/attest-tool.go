@@ -24,6 +24,7 @@ var (
 	nonceHex    = flag.String("nonce", "", "Hex string to use as nonce when quoting")
 	randomNonce = flag.Bool("random-nonce", false, "Generate a random nonce instead of using one provided")
 	useSHA256   = flag.Bool("sha256", false, "Use SHA256 for quote operations")
+	fEkIndex    = flag.Int("ekIndex", 0, "Ek Index to use for self test (index of the ek as seen by list-eks)")
 )
 
 func main() {
@@ -51,14 +52,15 @@ func main() {
 }
 
 func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
-	eks, err := tpm.EKs()
+	eks, err := tpm.EKCertificates()
 	if err != nil {
 		return fmt.Errorf("EKs() failed: %v", err)
 	}
 	if len(eks) == 0 {
 		return errors.New("no EK present")
 	}
-	ek := eks[0].Public
+	ekIndex := *fEkIndex
+	ek := eks[ekIndex].Public
 
 	// Test credential activation.
 	ap := attest.ActivationParameters{
@@ -69,7 +71,7 @@ func selftestCredentialActivation(tpm *attest.TPM, ak *attest.AK) error {
 	if err != nil {
 		return fmt.Errorf("failed to generate activation challenge: %v", err)
 	}
-	decryptedSecret, err := ak.ActivateCredential(tpm, *ec)
+	decryptedSecret, err := ak.ActivateCredentialWithEK(tpm, *ec, eks[ekIndex])
 	if err != nil {
 		return fmt.Errorf("failed to generate activate credential: %v", err)
 	}
@@ -180,7 +182,7 @@ func runCommand(tpm *attest.TPM) error {
 		fmt.Printf("Signature: %x\n", q.Signature)
 
 	case "list-eks":
-		eks, err := tpm.EKs()
+		eks, err := tpm.EKCertificates()
 		if err != nil {
 			return fmt.Errorf("failed to read EKs: %v", err)
 		}
